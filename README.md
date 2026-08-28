@@ -1,15 +1,21 @@
 # Omaweather
 
-Current weather in the [Omarchy](https://omarchy.org) bar, with the colored
-[v2.wttr.in](https://v2.wttr.in) forecast chart on click.
-
 <p align="center">
-  <img src="preview.png" alt="Omaweather bar chip and v2.wttr.in forecast chart">
+  <strong>The <a href="https://v2.wttr.in">v2.wttr.in</a> chart, living in your Omarchy bar.</strong><br>
+  Emoji and temperature up top. The full colored forecast on click.
 </p>
 
-The bar shows an emoji and temperature. Click it to open the three-day
-temperature graph, precipitation, wind, and moon phase — the same chart you
-get from `curl v2.wttr.in`.
+<p align="center">
+  <img src="preview.png" width="480" alt="Omaweather in the Omarchy bar: emoji and temperature on the chip, colored three-day temperature graph, rain, wind, and moon phase in the popup">
+</p>
+
+<p align="center">
+  <a href="https://omarchy.org"><img src="https://img.shields.io/badge/Omarchy-Quattro-111111?style=flat-square" alt="Omarchy Quattro"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-e6c35c?style=flat-square" alt="MIT license"></a>
+  <a href="https://github.com/chubin/wttr.in"><img src="https://img.shields.io/badge/data-wttr.in-87ff00?style=flat-square" alt="wttr.in"></a>
+</p>
+
+Same picture you get from `curl v2.wttr.in` — temperature curve, rain bars, wind, moon — drawn with your bar font and theme colors.
 
 No sudo or pkexec is required.
 
@@ -19,43 +25,51 @@ No sudo or pkexec is required.
 omarchy plugin add https://github.com/Gedankenn/omaweather.git --enable
 ```
 
-The widget lands in the center of the bar by default. Move it if you want:
+It lands in the center of the bar, next to the clock. Move it anywhere:
 
 ```sh
-omarchy bar move io.github.gedankenn.omaweather --section center
+omarchy bar move io.github.gedankenn.omaweather --section right
 ```
+
+## What you get
+
+| In the bar | In the popup |
+| --- | --- |
+| Weather emoji + temperature | Three-day temperature graph |
+| Tooltip with wind and humidity | Precipitation, wind, moon phase |
+| Refreshes every 15 minutes | Sunrise, sunset, and location |
 
 ## Usage
 
 | Input | Action |
-| --- | --- |
-| Left click | Open or close the forecast chart |
-| Middle click | Refresh |
-| Right click | Desktop notification with the current conditions |
-| `r` in the panel | Refresh |
-| Escape | Close the panel |
+| :---: | --- |
+| Left click | Open or close the forecast |
+| Middle click | Refresh now |
+| Right click | Desktop notification with current conditions |
+| `r` | Refresh while the panel is open |
+| Escape | Close |
 
 ## Configure
 
-Per-widget settings live on the bar entry (config UI or `omarchy bar set`):
-
-| key | default | meaning |
-| --- | --- | --- |
-| `location` | empty | City name or `lat,lon`. Empty uses IP geolocation. |
-| `refreshMinutes` | `15` | How often to refetch from wttr.in |
+Settings live on the widget entry — the Omarchy config UI, or:
 
 ```sh
 omarchy bar set io.github.gedankenn.omaweather location "Pato Branco"
 omarchy bar set io.github.gedankenn.omaweather refreshMinutes 20
 ```
 
-The plugin does not overwrite user configuration. Removing it only drops its
-bar entry.
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `location` | empty | City name or `lat,lon`. Empty uses IP geolocation. |
+| `refreshMinutes` | `15` | How often to refetch. Minimum 1. |
 
-## External services
+The plugin does not overwrite user configuration. Removing it only drops its bar entry.
 
-Forecast data is fetched over HTTPS from [wttr.in](https://github.com/chubin/wttr.in)
-with `curl`. Nothing is piped to a shell.
+## Data
+
+Forecasts come from [wttr.in](https://github.com/chubin/wttr.in) over HTTPS, fetched with `curl`. Nothing is piped to a shell. Metric units.
+
+Needs a network connection. If wttr.in is slow or down, the last good reading stays on the bar and the plugin retries.
 
 ## Remove
 
@@ -65,4 +79,4 @@ omarchy plugin remove io.github.gedankenn.omaweather
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE) © Fabio Slika Stella
