@@ -117,10 +117,11 @@ Panel {
 
   Process {
     id: compactProc
-    command: ["curl", "-fsS", "--max-time", "8", root.compactFetchUrl]
+    command: Model.cappedCurl(root.compactFetchUrl, 8, Model.MAX_COMPACT_BYTES)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!Model.withinByteCap(text, Model.MAX_COMPACT_BYTES)) return
         var parsed = Model.parseCompact(text)
         if (!parsed) {
           root.scheduleCompactRetry()
@@ -134,10 +135,11 @@ Panel {
 
   Process {
     id: chartProc
-    command: ["curl", "-fsS", "--max-time", "20", root.chartFetchUrl]
+    command: Model.cappedCurl(root.chartFetchUrl, 20, Model.MAX_CHART_BYTES)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!Model.withinByteCap(text, Model.MAX_CHART_BYTES)) return
         var cleaned = Model.cleanChart(text)
         if (!Model.stripAnsi(cleaned)) {
           root.scheduleChartRetry()
@@ -240,6 +242,7 @@ Panel {
             visible: root.chartFooter !== ""
             width: parent.width
             text: root.chartFooter
+            textFormat: Text.PlainText
             color: Qt.darker(root.contentForeground, 1.15)
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.bodySmall

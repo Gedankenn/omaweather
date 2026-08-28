@@ -1,3 +1,15 @@
+var MAX_COMPACT_BYTES = 2048
+var MAX_CHART_BYTES = 65536
+var MAX_LABEL_CHARS = 32
+var MAX_TOOLTIP_CHARS = 240
+var MAX_FOOTER_CHARS = 1500
+var MAX_FIELD_EMOJI = 16
+var MAX_FIELD_TEMP = 12
+var MAX_FIELD_CONDITION = 96
+var MAX_FIELD_HUMIDITY = 12
+var MAX_FIELD_WIND = 24
+var MAX_FIELD_LOCATION = 80
+
 function defaultLocation() {
   return ""
 }
@@ -16,6 +28,49 @@ function chartUrl(location) {
   return "https://v2.wttr.in/" + encodeLocation(location) + "?F&m"
 }
 
+// Producer cap: curl aborts oversized Content-Length, head -c stops the pipe
+// even when the length is unknown. URL/timeout/limit are positional so they
+// are not interpolated into the script text.
+function cappedCurl(url, timeoutSec, maxBytes) {
+  return [
+    "sh", "-c",
+    "curl -fsS --max-time \"$2\" --max-filesize \"$3\" -o - -- \"$1\" | head -c \"$3\"",
+    "omaweather-fetch",
+    String(url || ""),
+    String(timeoutSec),
+    String(maxBytes)
+  ]
+}
+
+function asPlainUi(value, maxLen) {
+  var s = stripAnsi(String(value || ""))
+  s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+  s = s.replace(/[\u202A-\u202E\u2066-\u2069]/g, "")
+  s = s.replace(/[<>&]/g, "")
+  s = s.replace(/[ \t]+/g, " ")
+  s = trim(s)
+  var cap = parseInt(maxLen, 10)
+  if (!isFinite(cap) || cap <= 0) cap = 80
+  if (s.length > cap) s = s.slice(0, cap)
+  return s
+}
+
+function asPlainMultiline(value, maxLen) {
+  var s = stripAnsi(String(value || ""))
+  s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+  s = s.replace(/[\u202A-\u202E\u2066-\u2069]/g, "")
+  s = s.replace(/[<>&]/g, "")
+  var cap = parseInt(maxLen, 10)
+  if (!isFinite(cap) || cap <= 0) cap = MAX_FOOTER_CHARS
+  if (s.length > cap) s = s.slice(0, cap)
+  return s
+}
+
+function withinByteCap(raw, maxBytes) {
+  var s = String(raw || "")
+  return s.length > 0 && s.length < maxBytes
+}
+
 function stripAnsi(text) {
   return String(text || "")
     .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "")
@@ -28,54 +83,60 @@ function trim(value) {
 }
 
 function parseCompact(raw) {
+  if (!withinByteCap(raw, MAX_COMPACT_BYTES)) return null
   var parts = stripAnsi(raw).replace(/\r/g, "").split("|")
   if (parts.length < 2) return null
 
-  var temp = trim(parts[1]).replace(/^\+/, "")
+  var temp = asPlainUi(trim(parts[1]).replace(/^\+/, ""), MAX_FIELD_TEMP)
   if (!temp) return null
 
   return {
-    emoji: trim(parts[0]),
+    emoji: asPlainUi(parts[0], MAX_FIELD_EMOJI),
     temp: temp,
-    tempShort: temp.replace(/[CF]$/, ""),
-    condition: trim(parts[2] || ""),
-    humidity: trim(parts[3] || ""),
-    wind: trim(parts[4] || ""),
-    location: trim(parts[5] || "")
+    tempShort: asPlainUi(temp.replace(/[CF]$/, ""), MAX_FIELD_TEMP),
+    condition: asPlainUi(parts[2] || "", MAX_FIELD_CONDITION),
+    humidity: asPlainUi(parts[3] || "", MAX_FIELD_HUMIDITY),
+    wind: asPlainUi(parts[4] || "", MAX_FIELD_WIND),
+    location: asPlainUi(parts[5] || "", MAX_FIELD_LOCATION)
   }
 }
 
 function parseWeatherLine(chart) {
+  if (!withinByteCap(chart, MAX_CHART_BYTES)) return null
   var match = String(chart || "").match(/^Weather:\s*(.+)$/m)
   if (!match) return null
 
   var parts = match[1].split(",").map(trim)
   if (parts.length < 2) return null
 
-  var head = parts[0]
+  var head = asPlainUi(parts[0], MAX_FIELD_EMOJI + MAX_FIELD_CONDITION + 1)
   var emojiMatch = head.match(/^(\S+)\s+(.*)$/)
   var emoji = emojiMatch ? emojiMatch[1] : ""
   var condition = emojiMatch ? emojiMatch[2] : head
-  var temp = (parts[1] || "").replace(/^\+/, "")
+  var temp = asPlainUi((parts[1] || "").replace(/^\+/, ""), MAX_FIELD_TEMP)
   if (!temp) return null
 
   return {
-    emoji: emoji,
+    emoji: asPlainUi(emoji, MAX_FIELD_EMOJI),
     temp: temp,
-    tempShort: temp.replace(/[CF]$/, ""),
-    condition: condition,
-    humidity: parts[2] || "",
-    wind: parts[3] || "",
+    tempShort: asPlainUi(temp.replace(/[CF]$/, ""), MAX_FIELD_TEMP),
+    condition: asPlainUi(condition, MAX_FIELD_CONDITION),
+    humidity: asPlainUi(parts[2] || "", MAX_FIELD_HUMIDITY),
+    wind: asPlainUi(parts[3] || "", MAX_FIELD_WIND),
     location: ""
   }
 }
 
 function cleanChart(raw) {
-  var text = String(raw || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  var text = String(raw || "")
+  if (text.length >= MAX_CHART_BYTES) return ""
+  text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
   text = text.replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, "")
   text = text.replace(/\x1B[()]./g, "")
   text = text.replace(/\n(?:\x1B\[[0-9;]*m)*Follow [^\n]*/g, "")
-  return text.replace(/[\t ]+$/gm, "").replace(/\s+$/g, "")
+  text = text.replace(/[\t ]+$/gm, "").replace(/\s+$/g, "")
+  if (text.length >= MAX_CHART_BYTES) return ""
+  return text
 }
 
 function isBoxLine(line) {
@@ -98,7 +159,7 @@ function splitChart(raw) {
   if (lastBox < 0) return { box: cleaned, footer: "" }
   return {
     box: lines.slice(0, lastBox + 1).join("\n"),
-    footer: trim(lines.slice(lastBox + 1).join("\n"))
+    footer: asPlainMultiline(trim(lines.slice(lastBox + 1).join("\n")), MAX_FOOTER_CHARS)
   }
 }
 
@@ -249,7 +310,9 @@ function applySgr(params, state) {
 }
 
 function ansiToHtml(raw, defaultColor) {
+  if (String(raw || "").length >= MAX_CHART_BYTES) return ""
   var s = cleanChart(raw)
+  if (!s) return ""
   var fallback = colorToHex(defaultColor)
   var state = { fg: null, bg: null, dim: false, bold: false }
   var out = []
@@ -299,33 +362,45 @@ function ansiToHtml(raw, defaultColor) {
     }
   }
   flush()
-  return out.join("")
+  var html = out.join("")
+  if (html.length > MAX_CHART_BYTES * 4) return ""
+  return html
 }
 
 function barLabel(compact, vertical) {
   if (!compact) return "…"
-  if (vertical) return compact.emoji || compact.tempShort || "…"
-  if (compact.emoji && compact.tempShort) return compact.emoji + " " + compact.tempShort
-  return compact.emoji || compact.tempShort || "…"
+  var label = ""
+  if (vertical) label = compact.emoji || compact.tempShort || "…"
+  else if (compact.emoji && compact.tempShort) label = compact.emoji + " " + compact.tempShort
+  else label = compact.emoji || compact.tempShort || "…"
+  label = asPlainUi(label, MAX_LABEL_CHARS)
+  return label || "…"
 }
 
 function tooltip(compact) {
-  if (!compact) return "wttr.in"
+  if (!compact) return "Omaweather"
   var bits = []
   if (compact.location) bits.push(compact.location)
   if (compact.condition) bits.push(compact.condition)
   if (compact.temp) bits.push(compact.temp)
   if (compact.humidity) bits.push(compact.humidity)
   if (compact.wind) bits.push(compact.wind)
-  return bits.length ? bits.join(" · ") : "wttr.in"
+  var text = asPlainUi(bits.length ? bits.join(" · ") : "Omaweather", MAX_TOOLTIP_CHARS)
+  return text || "Omaweather"
 }
 
 if (typeof module !== "undefined") {
   module.exports = {
+    MAX_COMPACT_BYTES: MAX_COMPACT_BYTES,
+    MAX_CHART_BYTES: MAX_CHART_BYTES,
     defaultLocation: defaultLocation,
     encodeLocation: encodeLocation,
     compactUrl: compactUrl,
     chartUrl: chartUrl,
+    cappedCurl: cappedCurl,
+    asPlainUi: asPlainUi,
+    asPlainMultiline: asPlainMultiline,
+    withinByteCap: withinByteCap,
     stripAnsi: stripAnsi,
     parseCompact: parseCompact,
     parseWeatherLine: parseWeatherLine,

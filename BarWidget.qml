@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "Model.js" as Model
 
 BarWidget {
   id: root
@@ -69,8 +70,8 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.label
-    tooltipText: root.tooltip
+    text: Model.asPlainUi(root.label, 32)
+    tooltipText: Model.asPlainUi(root.tooltip, 240)
     horizontalMargin: 8.75
     verticalPadding: 8.75
 

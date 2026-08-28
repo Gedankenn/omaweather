@@ -67,7 +67,7 @@ The plugin does not overwrite user configuration. Removing it only drops its bar
 
 ## Data
 
-Forecasts come from [wttr.in](https://github.com/chubin/wttr.in) over HTTPS, fetched with `curl`. Nothing is piped to a shell. Metric units.
+Forecasts come from [wttr.in](https://github.com/chubin/wttr.in) over HTTPS, fetched with `curl`. Download size is capped before it reaches the shell (`head -c`, plus `--max-filesize`). Remote fields are clipped and treated as plain text in the bar and footer. Metric units.
 
 Needs a network connection. If wttr.in is slow or down, the last good reading stays on the bar and the plugin retries.
 
