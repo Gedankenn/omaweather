@@ -9,13 +9,23 @@ var MAX_FIELD_CONDITION = 96
 var MAX_FIELD_HUMIDITY = 12
 var MAX_FIELD_WIND = 24
 var MAX_FIELD_LOCATION = 80
+var MAX_LOCATION_CHARS = 128
+var MAX_CHART_COLS = 80
+var MAX_CHART_LINES = 48
+var MAX_CHART_SPANS = 2048
 
 function defaultLocation() {
   return ""
 }
 
-function encodeLocation(location) {
+function clampLocation(location) {
   var name = String(location || "").replace(/^\s+|\s+$/g, "")
+  if (name.length > MAX_LOCATION_CHARS) name = name.slice(0, MAX_LOCATION_CHARS)
+  return name
+}
+
+function encodeLocation(location) {
+  var name = clampLocation(location)
   if (!name) return ""
   return encodeURIComponent(name).replace(/%20/g, "+")
 }
@@ -197,11 +207,14 @@ function visualWidth(text) {
 function chartColumns(boxRaw) {
   var frame = chartFrameLine(boxRaw)
   var cols = visualWidth(frame)
-  return cols > 0 ? cols : 74
+  if (!(cols > 0)) cols = 74
+  if (cols > MAX_CHART_COLS) cols = MAX_CHART_COLS
+  return cols
 }
 
 function widthRuler(columns) {
   var n = Math.max(1, parseInt(columns, 10) || 74)
+  if (n > MAX_CHART_COLS) n = MAX_CHART_COLS
   var s = ""
   for (var i = 0; i < n; i++) s += "0"
   return s
@@ -317,9 +330,18 @@ function ansiToHtml(raw, defaultColor) {
   var state = { fg: null, bg: null, dim: false, bold: false }
   var out = []
   var run = ""
+  var lineCount = 1
+  var colCount = 0
+  var spanCount = 0
+  var stopped = false
 
   function flush() {
     if (!run) return
+    if (spanCount >= MAX_CHART_SPANS) {
+      run = ""
+      stopped = true
+      return
+    }
     var fg = state.fg || fallback
     if (state.dim) fg = dimHex(fg)
     var open = '<font color="' + fg + '">'
@@ -327,38 +349,60 @@ function ansiToHtml(raw, defaultColor) {
     var close = state.bold ? "</font></b>" : "</font>"
     out.push(open + htmlEscape(run).replace(/ /g, "&nbsp;") + close)
     run = ""
+    spanCount++
+  }
+
+  function appendLine(text) {
+    if (stopped) return
+    var piece = String(text || "")
+    var room = MAX_CHART_COLS - colCount
+    if (room <= 0) return
+    if (piece.length > room) piece = piece.slice(0, room)
+    run += piece
+    colCount += piece.length
+  }
+
+  function newline() {
+    if (stopped) return
+    if (lineCount >= MAX_CHART_LINES) {
+      flush()
+      stopped = true
+      return
+    }
+    flush()
+    out.push("<br/>")
+    lineCount++
+    colCount = 0
   }
 
   var re = /\x1B(?:\[([0-9;]*)([A-Za-z])|\][^\x07]*(?:\x07|\x1B\\)|[()].|.)/g
   var last = 0
   var match
-  while ((match = re.exec(s))) {
+  while (!stopped && (match = re.exec(s))) {
     var chunk = s.slice(last, match.index)
     if (chunk) {
       var lines = chunk.split("\n")
       for (var i = 0; i < lines.length; i++) {
-        if (i) {
-          flush()
-          out.push("<br/>")
-        }
-        run += lines[i]
+        if (i) newline()
+        appendLine(lines[i])
+        if (stopped) break
       }
     }
     last = re.lastIndex
-    if (match[2] === "m") {
+    if (!stopped && match[2] === "m") {
       flush()
       applySgr(String(match[1] || "").split(";"), state)
     }
   }
-  var tail = s.slice(last)
-  if (tail) {
-    var tailLines = tail.split("\n")
-    for (var j = 0; j < tailLines.length; j++) {
-      if (j) {
-        flush()
-        out.push("<br/>")
+  if (!stopped) {
+    var tail = s.slice(last)
+    if (tail) {
+      var tailLines = tail.split("\n")
+      for (var j = 0; j < tailLines.length; j++) {
+        if (j) newline()
+        appendLine(tailLines[j])
+        if (stopped) break
       }
-      run += tailLines[j]
     }
   }
   flush()
@@ -394,6 +438,7 @@ if (typeof module !== "undefined") {
     MAX_COMPACT_BYTES: MAX_COMPACT_BYTES,
     MAX_CHART_BYTES: MAX_CHART_BYTES,
     defaultLocation: defaultLocation,
+    clampLocation: clampLocation,
     encodeLocation: encodeLocation,
     compactUrl: compactUrl,
     chartUrl: chartUrl,

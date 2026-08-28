@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.gedankenn.omaweather",
   "name": "Omaweather",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Gedankenn",
   "license": "MIT",
   "description": "Current weather in the Omarchy bar, with the colored v2.wttr.in forecast chart on click.",

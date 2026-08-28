@@ -18,8 +18,7 @@ Panel {
 
   readonly property string location: {
     var value = String(setting("location", Model.defaultLocation()))
-    value = value.replace(/^\s+|\s+$/g, "")
-    return value || Model.defaultLocation()
+    return Model.clampLocation(value)
   }
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
   readonly property string compactFetchUrl: Model.compactUrl(location)
