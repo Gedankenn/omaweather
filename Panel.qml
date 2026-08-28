@@ -34,7 +34,10 @@ Panel {
 
   readonly property string label: Model.barLabel(compact, !!(bar && bar.vertical))
   readonly property string tooltipText: Model.tooltip(compact)
-  readonly property string chartHtml: chart ? Model.ansiToHtml(chart, contentForeground) : ""
+  readonly property var chartParts: Model.splitChart(chart)
+  readonly property string chartBox: chartParts && chartParts.box ? chartParts.box : ""
+  readonly property string chartFooter: chartParts && chartParts.footer ? Model.stripAnsi(chartParts.footer) : ""
+  readonly property string chartHtml: chartBox ? Model.ansiToHtml(chartBox, contentForeground) : ""
   readonly property string statusMessage: compact || chart ? "" : "Fetching v2.wttr.in…"
 
   onLocationChanged: {
@@ -187,8 +190,8 @@ Panel {
     open: root.opened
     centerOnBar: true
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Math.max(Style.space(420), chartMeasure.implicitWidth))
-    contentHeight: panel.fittedContentHeight(Math.max(Style.space(80), chartMeasure.implicitHeight))
+    contentWidth: panel.fittedContentWidth(Math.max(Style.space(280), frameMeasure.implicitWidth))
+    contentHeight: panel.fittedContentHeight(Math.max(Style.space(80), chartColumn.implicitHeight))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -197,39 +200,61 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) { if (t === "r" || t === "R") root.refresh() }
 
+      Text {
+        id: frameMeasure
+        visible: false
+        text: {
+          var frame = Model.chartFrameLine(root.chartBox)
+          return frame || root.statusMessage || "Couldn't reach wttr.in"
+        }
+        font.family: root.contentFontFamily
+        font.pixelSize: Style.font.bodySmall
+        font.kerning: false
+        wrapMode: Text.NoWrap
+      }
+
       Flickable {
         id: chartScroll
         anchors.fill: parent
-        contentWidth: Math.max(width, chartMeasure.implicitWidth)
-        contentHeight: Math.max(chartText.implicitHeight, chartMeasure.implicitHeight)
+        contentWidth: width
+        contentHeight: chartColumn.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        interactive: contentHeight > height || contentWidth > width
-        flickableDirection: Flickable.AutoFlickIfNeeded
+        interactive: contentHeight > height
+        flickableDirection: Flickable.VerticalFlick
 
-        Text {
-          id: chartMeasure
-          visible: false
-          text: root.chart ? Model.stripAnsi(root.chart) : (root.statusMessage || "Couldn't reach wttr.in")
-          font.family: root.contentFontFamily
-          font.pixelSize: Style.font.bodySmall
-          font.kerning: false
-          wrapMode: Text.NoWrap
-        }
+        Column {
+          id: chartColumn
+          width: frameMeasure.implicitWidth
+          spacing: Style.space(8)
 
-        Text {
-          id: chartText
-          text: root.chartHtml || root.statusMessage || "Couldn't reach wttr.in"
-          textFormat: root.chartHtml ? Text.StyledText : Text.PlainText
-          color: root.chartHtml ? root.contentForeground : Qt.darker(root.contentForeground, 1.5)
-          font.family: root.contentFontFamily
-          font.pixelSize: Style.font.bodySmall
-          font.kerning: false
-          wrapMode: Text.NoWrap
-          renderType: Text.QtRendering
-          lineHeight: 1.02
-          lineHeightMode: Text.ProportionalHeight
-          font.italic: !root.chart
+          Text {
+            id: chartText
+            width: parent.width
+            text: root.chartHtml || root.statusMessage || "Couldn't reach wttr.in"
+            textFormat: root.chartHtml ? Text.StyledText : Text.PlainText
+            color: root.chartHtml ? root.contentForeground : Qt.darker(root.contentForeground, 1.5)
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.bodySmall
+            font.kerning: false
+            wrapMode: Text.NoWrap
+            clip: true
+            renderType: Text.QtRendering
+            lineHeight: 1.02
+            lineHeightMode: Text.ProportionalHeight
+            font.italic: !root.chart
+          }
+
+          Text {
+            visible: root.chartFooter !== ""
+            width: parent.width
+            text: root.chartFooter
+            color: Qt.darker(root.contentForeground, 1.15)
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.Wrap
+            renderType: Text.NativeRendering
+          }
         }
       }
     }

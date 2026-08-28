@@ -78,6 +78,44 @@ function cleanChart(raw) {
   return text.replace(/[\t ]+$/gm, "").replace(/\s+$/g, "")
 }
 
+function isBoxLine(line) {
+  var s = stripAnsi(line)
+  var i = 0
+  while (i < s.length && (s.charAt(i) === " " || s.charAt(i) === "\t")) i++
+  if (i >= s.length) return false
+  var code = s.charCodeAt(i)
+  return code >= 0x2500 && code <= 0x257F
+}
+
+function splitChart(raw) {
+  var cleaned = cleanChart(raw)
+  if (!cleaned) return { box: "", footer: "" }
+  var lines = cleaned.split("\n")
+  var lastBox = -1
+  for (var i = 0; i < lines.length; i++) {
+    if (isBoxLine(lines[i])) lastBox = i
+  }
+  if (lastBox < 0) return { box: cleaned, footer: "" }
+  return {
+    box: lines.slice(0, lastBox + 1).join("\n"),
+    footer: trim(lines.slice(lastBox + 1).join("\n"))
+  }
+}
+
+function chartFrameLine(raw) {
+  var lines = stripAnsi(typeof raw === "string" ? raw : (raw && raw.box) || "").split("\n")
+  var i
+  for (i = 0; i < lines.length; i++) {
+    var first = lines[i].charAt(0)
+    if (first === "┌" || first === "└") return lines[i]
+  }
+  var best = ""
+  for (i = 0; i < lines.length; i++) {
+    if (isBoxLine(lines[i]) && lines[i].length > best.length) best = lines[i]
+  }
+  return best
+}
+
 function pad2(n) {
   var v = Math.max(0, Math.min(255, Math.round(Number(n) || 0)))
   return ("0" + v.toString(16)).slice(-2)
@@ -262,6 +300,8 @@ if (typeof module !== "undefined") {
     parseCompact: parseCompact,
     parseWeatherLine: parseWeatherLine,
     cleanChart: cleanChart,
+    splitChart: splitChart,
+    chartFrameLine: chartFrameLine,
     colorToHex: colorToHex,
     ansiToHtml: ansiToHtml,
     barLabel: barLabel,
