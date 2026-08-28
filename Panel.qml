@@ -39,6 +39,9 @@ Panel {
   readonly property string chartFooter: chartParts && chartParts.footer ? Model.stripAnsi(chartParts.footer) : ""
   readonly property string chartHtml: chartBox ? Model.ansiToHtml(chartBox, contentForeground) : ""
   readonly property string statusMessage: compact || chart ? "" : "Fetching v2.wttr.in…"
+  // Qt reports StyledText width as pixelSize*cols (em square). JetBrains Mono
+  // and other bar fonts paint at ~0.6em, which is the cell we actually see.
+  readonly property real chartInnerWidth: Math.ceil(Model.chartColumns(chartBox) * Style.font.bodySmall * 0.6)
 
   onLocationChanged: {
     compactRetries = 0
@@ -190,7 +193,8 @@ Panel {
     open: root.opened
     centerOnBar: true
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Math.max(Style.space(280), frameMeasure.implicitWidth))
+    padding: Style.spacing.md
+    contentWidth: panel.fittedContentWidth(root.chartInnerWidth + panel.padding * 2 + Style.space(4))
     contentHeight: panel.fittedContentHeight(Math.max(Style.space(80), chartColumn.implicitHeight))
 
     PanelKeyCatcher {
@@ -199,19 +203,6 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) { if (t === "r" || t === "R") root.refresh() }
-
-      Text {
-        id: frameMeasure
-        visible: false
-        text: {
-          var frame = Model.chartFrameLine(root.chartBox)
-          return frame || root.statusMessage || "Couldn't reach wttr.in"
-        }
-        font.family: root.contentFontFamily
-        font.pixelSize: Style.font.bodySmall
-        font.kerning: false
-        wrapMode: Text.NoWrap
-      }
 
       Flickable {
         id: chartScroll
@@ -225,8 +216,8 @@ Panel {
 
         Column {
           id: chartColumn
-          width: frameMeasure.implicitWidth
-          spacing: Style.space(8)
+          width: root.chartInnerWidth
+          spacing: Style.space(6)
 
           Text {
             id: chartText

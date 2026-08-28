@@ -106,14 +106,44 @@ function chartFrameLine(raw) {
   var lines = stripAnsi(typeof raw === "string" ? raw : (raw && raw.box) || "").split("\n")
   var i
   for (i = 0; i < lines.length; i++) {
-    var first = lines[i].charAt(0)
-    if (first === "┌" || first === "└") return lines[i]
+    var code = lines[i].charCodeAt(0)
+    if (code === 0x250C || code === 0x2514) return lines[i]
   }
-  var best = ""
-  for (i = 0; i < lines.length; i++) {
-    if (isBoxLine(lines[i]) && lines[i].length > best.length) best = lines[i]
+  return ""
+}
+
+function visualWidth(text) {
+  var s = String(text || "")
+  var width = 0
+  for (var i = 0; i < s.length; i++) {
+    var code = s.charCodeAt(i)
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      width += 2
+      i++
+      continue
+    }
+    if (code >= 0xFE00 && code <= 0xFE0F) continue
+    if (code === 0x200D) continue
+    if ((code >= 0x2600 && code <= 0x27BF) || (code >= 0x2B00 && code <= 0x2BFF)) {
+      width += 2
+      continue
+    }
+    width += 1
   }
-  return best
+  return width
+}
+
+function chartColumns(boxRaw) {
+  var frame = chartFrameLine(boxRaw)
+  var cols = visualWidth(frame)
+  return cols > 0 ? cols : 74
+}
+
+function widthRuler(columns) {
+  var n = Math.max(1, parseInt(columns, 10) || 74)
+  var s = ""
+  for (var i = 0; i < n; i++) s += "0"
+  return s
 }
 
 function pad2(n) {
@@ -302,6 +332,8 @@ if (typeof module !== "undefined") {
     cleanChart: cleanChart,
     splitChart: splitChart,
     chartFrameLine: chartFrameLine,
+    chartColumns: chartColumns,
+    widthRuler: widthRuler,
     colorToHex: colorToHex,
     ansiToHtml: ansiToHtml,
     barLabel: barLabel,
