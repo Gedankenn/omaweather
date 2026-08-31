@@ -24,18 +24,77 @@ function clampLocation(location) {
   return name
 }
 
+function parseCoordinate(value) {
+  var n = parseFloat(String(value))
+  return isFinite(n) ? n : null
+}
+
 function encodeLocation(location) {
   var name = clampLocation(location)
   if (!name) return ""
   return encodeURIComponent(name).replace(/%20/g, "+")
 }
 
-function compactUrl(location) {
-  return "https://wttr.in/" + encodeLocation(location) + "?format=%c|%t|%C|%h|%w|%l&m"
+// Coordinates stay unencoded (wttr.in wants lat,lon). A city name is encoded.
+function locationQuery(name, latitude, longitude) {
+  var lat = parseCoordinate(latitude)
+  var lon = parseCoordinate(longitude)
+  if (lat !== null && lon !== null) return lat + "," + lon
+  return encodeLocation(name)
 }
 
-function chartUrl(location) {
-  return "https://v2.wttr.in/" + encodeLocation(location) + "?F&m"
+function compactUrl(query) {
+  return "https://wttr.in/" + String(query || "") + "?format=%c|%t|%C|%h|%w|%l&m"
+}
+
+function chartUrl(query) {
+  return "https://v2.wttr.in/" + String(query || "") + "?F&m"
+}
+
+function geocodeUrl(query, language) {
+  var name = clampLocation(query)
+  if (name.length < 2) return ""
+  var lang = String(language || "en").split(/[_-]/)[0] || "en"
+  return "https://geocoding-api.open-meteo.com/v1/search?name="
+    + encodeURIComponent(name)
+    + "&count=5&language=" + encodeURIComponent(lang)
+    + "&format=json"
+}
+
+function parseGeocodingResults(raw) {
+  try {
+    var data = JSON.parse(String(raw || "{}"))
+    var results = data.results
+    if (!results || !results.length) return []
+
+    var out = []
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i]
+      if (!r || !r.name || r.latitude === undefined || r.longitude === undefined) continue
+      var region = [r.admin1, r.country].filter(function(part) { return !!part }).join(", ")
+      out.push({
+        name: clampLocation(r.name),
+        description: asPlainUi(region, 80),
+        latitude: parseCoordinate(r.latitude),
+        longitude: parseCoordinate(r.longitude)
+      })
+    }
+    return out
+  } catch (e) {
+    return []
+  }
+}
+
+function locationCommit(text, suggestions, selectedIndex) {
+  var name = clampLocation(text)
+  if (!name) return { name: "", latitude: null, longitude: null }
+
+  var choices = suggestions || []
+  var index = Math.max(0, Math.min(parseInt(selectedIndex, 10) || 0, choices.length - 1))
+  var suggestion = choices[index]
+  if (suggestion && suggestion.name) return suggestion
+
+  return { name: name, latitude: null, longitude: null }
 }
 
 // Producer cap: curl aborts oversized Content-Length, head -c stops the pipe
@@ -44,7 +103,7 @@ function chartUrl(location) {
 function cappedCurl(url, timeoutSec, maxBytes) {
   return [
     "sh", "-c",
-    "curl -fsS --max-time \"$2\" --max-filesize \"$3\" -o - -- \"$1\" | head -c \"$3\"",
+    "curl -fsS -A omaweather --max-time \"$2\" --max-filesize \"$3\" -o - -- \"$1\" | head -c \"$3\"",
     "omaweather-fetch",
     String(url || ""),
     String(timeoutSec),
@@ -421,10 +480,11 @@ function barLabel(compact, vertical) {
   return label || "…"
 }
 
-function tooltip(compact) {
+function tooltip(compact, locationName) {
   if (!compact) return "Omaweather"
   var bits = []
-  if (compact.location) bits.push(compact.location)
+  var place = clampLocation(locationName) || compact.location
+  if (place) bits.push(place)
   if (compact.condition) bits.push(compact.condition)
   if (compact.temp) bits.push(compact.temp)
   if (compact.humidity) bits.push(compact.humidity)
@@ -439,9 +499,14 @@ if (typeof module !== "undefined") {
     MAX_CHART_BYTES: MAX_CHART_BYTES,
     defaultLocation: defaultLocation,
     clampLocation: clampLocation,
+    parseCoordinate: parseCoordinate,
     encodeLocation: encodeLocation,
+    locationQuery: locationQuery,
     compactUrl: compactUrl,
     chartUrl: chartUrl,
+    geocodeUrl: geocodeUrl,
+    parseGeocodingResults: parseGeocodingResults,
+    locationCommit: locationCommit,
     cappedCurl: cappedCurl,
     asPlainUi: asPlainUi,
     asPlainMultiline: asPlainMultiline,

@@ -44,14 +44,19 @@ omarchy bar move io.github.gedankenn.omaweather --section right
 | Input | Action |
 | :---: | --- |
 | Left click | Open or close the forecast |
+| Click the city name | Search and pick a city |
+| Enter | Same city search, while the panel is open |
+| Empty search | Back to IP geolocation |
 | Middle click | Refresh now |
 | Right click | Desktop notification with current conditions |
 | `r` | Refresh while the panel is open |
-| Escape | Close |
+| Escape | Close the search, or the panel |
 
 ## Configure
 
-Settings live on the widget entry — the Omarchy config UI, or:
+The simple way: open the popup, click the city name, type, pick a result. That stores the name plus coordinates so the next fetch hits the right place.
+
+Settings also live on the widget entry — the Omarchy config UI, or:
 
 ```sh
 omarchy bar set io.github.gedankenn.omaweather location "Pato Branco"
