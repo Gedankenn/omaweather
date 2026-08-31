@@ -72,8 +72,9 @@ BarWidget {
     bar: root.bar
     text: Model.asPlainUi(root.label, 32)
     tooltipText: Model.asPlainUi(root.tooltip, 240)
-    horizontalMargin: 8.75
-    verticalPadding: 8.75
+    fontSize: 16
+    horizontalMargin: 10
+    verticalPadding: 8
 
     onPressed: function(b) {
       if (b === Qt.RightButton) root.notifyStatus()
