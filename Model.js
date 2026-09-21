@@ -228,13 +228,15 @@ function parseForecast(raw) {
     var code = current.weather_code
     return {
       current: {
+        time: asPlainUi(String(current.time || ""), MAX_FIELD_TIME),
         temperature: roundOrNull(current.temperature_2m),
         apparent: roundOrNull(current.apparent_temperature),
         humidity: roundOrNull(current.relative_humidity_2m),
         wind: roundOrNull(current.wind_speed_10m),
         code: code === undefined ? null : code,
         condition: asPlainUi(wmoText(code), MAX_FIELD_CONDITION),
-        emoji: asPlainUi(wmoEmoji(code), MAX_FIELD_EMOJI)
+        emoji: asPlainUi(wmoEmoji(code), MAX_FIELD_EMOJI),
+        time: asPlainUi(String(current.time || ""), 24)
       },
       days: days,
       hours: hours,

@@ -637,6 +637,7 @@ Panel {
             height: visible ? Style.space(164) : 0
             hours: root.forecast ? root.forecast.hours : []
             days: root.forecast ? root.forecast.days : []
+            currentTime: root.forecast ? root.forecast.current.time : ""
             foreground: root.contentForeground
             fontFamily: root.contentFontFamily
           }

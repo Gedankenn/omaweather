@@ -8,10 +8,25 @@ Item {
   property var hours: []
   property var days: []
   property color foreground: "#ffffff"
+  property color accent: "#ffb000"
   property string fontFamily: ""
+  property color nowColor: "#ff8c00"
+  property string currentTime: ""
 
   implicitWidth: Style.space(360)
   implicitHeight: Style.space(164)
+
+  readonly property int nowIndex: {
+    if (!root.currentTime) return -1
+    var now = String(root.currentTime)
+    for (var i = 0; i < hourCount; i++) {
+      if (String(hours[i].time) >= now) return i
+    }
+    return hourCount - 1
+  }
+  readonly property string nowLabel: nowIndex >= 0 && nowIndex < hourCount
+    ? String(hours[nowIndex].label || "") : ""
+  readonly property real nowX: nowIndex >= 0 ? xForIndex(nowIndex) : -1
 
   readonly property int hourCount: hours ? hours.length : 0
   readonly property real padX: Style.space(8)
@@ -141,6 +156,22 @@ Item {
         ctx.moveTo(root.xForIndex(i), root.yForTemp(root.hours[i].temp))
         ctx.lineTo(root.xForIndex(i + 1), root.yForTemp(root.hours[i + 1].temp))
         ctx.stroke()
+      }
+
+      // Vertical line marking the current hour, plus a dot on the curve.
+      if (root.nowIndex >= 0 && root.nowX > 0) {
+        ctx.lineWidth = 1.2
+        ctx.strokeStyle = root.rgbaString(root.nowColor, 0.9)
+        ctx.setLineDash([4, 3])
+        ctx.beginPath()
+        ctx.moveTo(root.nowX, top)
+        ctx.lineTo(root.nowX, base)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.fillStyle = root.rgbaString(root.nowColor, 1)
+        ctx.beginPath()
+        ctx.arc(root.nowX, root.yForTemp(root.hours[root.nowIndex].temp), 2.6, 0, Math.PI * 2)
+        ctx.fill()
       }
     }
   }
