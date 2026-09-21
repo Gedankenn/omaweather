@@ -46,7 +46,7 @@ omarchy bar move io.github.gedankenn.omaweather --section right
 | Left click | Open or close the forecast |
 | Click the city name | Search and pick a city |
 | Enter | Same city search, while the panel is open |
-| Empty search | Back to IP geolocation |
+| Empty search | Back to the default location |
 | Middle click | Refresh now |
 | Right click | Desktop notification with current conditions |
 | `r` | Refresh while the panel is open |
@@ -65,16 +65,16 @@ omarchy bar set io.github.gedankenn.omaweather refreshMinutes 20
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `location` | empty | City name or `lat,lon`. Empty uses IP geolocation. |
+| `location` | empty | City name or `lat,lon`. Empty falls back to the Omarchy `weather.json` location, then to Pato Branco. |
 | `refreshMinutes` | `15` | How often to refetch. Minimum 1. |
 
 The plugin does not overwrite user configuration. Removing it only drops its bar entry.
 
 ## Data
 
-Forecasts come from [wttr.in](https://github.com/chubin/wttr.in) over HTTPS, fetched with `curl`. Download size is capped before it reaches the shell (`head -c`, plus `--max-filesize`). Remote fields are clipped and treated as plain text in the bar and footer. Metric units.
+The current conditions on the bar (emoji, temperature, wind, humidity) come from [Open-Meteo](https://open-meteo.com) over HTTPS, the same keyless source the Second Coming theme uses. The popup forecast chart still comes from [wttr.in](https://github.com/chubin/wttr.in). Both are fetched with `curl`, and the download size is capped before it reaches the shell (`head -c`, plus `--max-filesize`). Remote fields are clipped and treated as plain text in the bar and footer. Metric units.
 
-Needs a network connection. If wttr.in is slow or down, the last good reading stays on the bar and the plugin retries.
+Needs a network connection. If a source is slow or down, the last good reading stays on the bar and the plugin retries.
 
 ## Remove
 

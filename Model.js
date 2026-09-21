@@ -51,6 +51,88 @@ function chartUrl(query) {
   return "https://v2.wttr.in/" + String(query || "") + "?F&m"
 }
 
+// Current conditions come from Open-Meteo (no key, JSON), the same source the
+// Second Coming theme uses. The chart popup still comes from wttr.in.
+function currentUrl(latitude, longitude) {
+  var lat = parseCoordinate(latitude)
+  var lon = parseCoordinate(longitude)
+  if (lat === null || lon === null) return ""
+  return "https://api.open-meteo.com/v1/forecast?latitude=" + lat
+    + "&longitude=" + lon
+    + "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+    + "&timezone=auto"
+}
+
+function wmoText(code) {
+  var c = Number(code)
+  if (!isFinite(c)) return ""
+  if (c === 0) return "Clear"
+  if (c === 1) return "Mainly clear"
+  if (c === 2) return "Partly cloudy"
+  if (c === 3) return "Overcast"
+  if (c === 45 || c === 48) return "Fog"
+  if (c >= 51 && c <= 57) return "Drizzle"
+  if (c >= 61 && c <= 67) return "Rain"
+  if (c >= 71 && c <= 77) return "Snow"
+  if (c >= 80 && c <= 82) return "Showers"
+  if (c === 85 || c === 86) return "Snow showers"
+  if (c >= 95) return "Thunderstorm"
+  return "Cloudy"
+}
+
+function wmoEmoji(code) {
+  var c = Number(code)
+  if (!isFinite(c)) return ""
+  if (c === 0) return "☀️"
+  if (c === 1 || c === 2) return "⛅"
+  if (c === 3) return "☁️"
+  if (c === 45 || c === 48) return "🌫️"
+  if (c >= 51 && c <= 57) return "🌦️"
+  if (c >= 61 && c <= 67) return "🌧️"
+  if (c >= 71 && c <= 77) return "❄️"
+  if (c >= 80 && c <= 82) return "🌧️"
+  if (c === 85 || c === 86) return "🌨️"
+  if (c >= 95) return "⛈️"
+  return "🌡️"
+}
+
+function parseCurrent(raw) {
+  try {
+    var data = JSON.parse(String(raw || "{}"))
+    var cur = data.current || {}
+    if (cur.temperature_2m === undefined || cur.temperature_2m === null) return null
+
+    var temp = Math.round(Number(cur.temperature_2m)) + "°"
+    if (!isFinite(Number(cur.temperature_2m))) return null
+
+    return {
+      emoji: asPlainUi(wmoEmoji(cur.weather_code), MAX_FIELD_EMOJI),
+      temp: asPlainUi(temp, MAX_FIELD_TEMP),
+      tempShort: asPlainUi(temp.replace(/[CF°]$/, ""), MAX_FIELD_TEMP),
+      condition: asPlainUi(wmoText(cur.weather_code), MAX_FIELD_CONDITION),
+      humidity: cur.relative_humidity_2m === undefined ? "" : asPlainUi(Math.round(Number(cur.relative_humidity_2m)) + "%", MAX_FIELD_HUMIDITY),
+      wind: cur.wind_speed_10m === undefined ? "" : asPlainUi(Math.round(Number(cur.wind_speed_10m)) + " km/h", MAX_FIELD_WIND),
+      location: ""
+    }
+  } catch (e) {
+    return null
+  }
+}
+
+// Omarchy stores the user's chosen location in weather.json. Read it as the
+// default when the widget has no location of its own.
+function parseWeatherJson(raw) {
+  try {
+    var data = JSON.parse(String(raw || "{}"))
+    var lat = parseCoordinate(data.latitude)
+    var lon = parseCoordinate(data.longitude)
+    if (lat === null || lon === null) return null
+    return { name: clampLocation(data.name), latitude: lat, longitude: lon }
+  } catch (e) {
+    return null
+  }
+}
+
 function geocodeUrl(query, language) {
   var name = clampLocation(query)
   if (name.length < 2) return ""
@@ -504,6 +586,11 @@ if (typeof module !== "undefined") {
     locationQuery: locationQuery,
     compactUrl: compactUrl,
     chartUrl: chartUrl,
+    currentUrl: currentUrl,
+    wmoText: wmoText,
+    wmoEmoji: wmoEmoji,
+    parseCurrent: parseCurrent,
+    parseWeatherJson: parseWeatherJson,
     geocodeUrl: geocodeUrl,
     parseGeocodingResults: parseGeocodingResults,
     locationCommit: locationCommit,

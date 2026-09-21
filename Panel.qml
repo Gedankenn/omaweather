@@ -21,8 +21,13 @@ Panel {
   readonly property var locationLongitude: setting("longitude", null)
   readonly property string locationQuery: Model.locationQuery(locationName, locationLatitude, locationLongitude)
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
-  readonly property string compactFetchUrl: Model.compactUrl(locationQuery)
   readonly property string chartFetchUrl: Model.chartUrl(locationQuery)
+  readonly property string weatherJsonPath: Quickshell.env("HOME") + "/.local/state/omarchy/settings/weather.json"
+
+  // Open-Meteo needs numeric coordinates. Prefer the widget's own location,
+  // then the Omarchy weather.json default, then a hardcoded Pato Branco.
+  property real resolvedLatitude: NaN
+  property real resolvedLongitude: NaN
   readonly property color contentForeground: bar ? bar.foreground : Color.foreground
   readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property string geocodeLanguage: String(Qt.locale().name || "en")
@@ -110,7 +115,39 @@ Panel {
   }
 
   function startCompact() {
-    restartProc(compactProc, Model.cappedCurl(root.compactFetchUrl, 8, Model.MAX_COMPACT_BYTES))
+    var lat = Model.parseCoordinate(root.locationLatitude)
+    var lon = Model.parseCoordinate(root.locationLongitude)
+    if (lat !== null && lon !== null) {
+      fetchCurrent(lat, lon)
+      return
+    }
+    if (isFinite(root.resolvedLatitude) && isFinite(root.resolvedLongitude)) {
+      fetchCurrent(root.resolvedLatitude, root.resolvedLongitude)
+      return
+    }
+    if (root.locationName) {
+      startCompactGeocode(root.locationName)
+      return
+    }
+    fetchCurrent(-26.22861, -52.67056)
+  }
+
+  function fetchCurrent(latitude, longitude) {
+    var url = Model.currentUrl(latitude, longitude)
+    if (!url) return
+    restartProc(compactProc, Model.cappedCurl(url, 8, Model.MAX_COMPACT_BYTES))
+  }
+
+  function startCompactGeocode(name) {
+    var url = Model.geocodeUrl(name, root.geocodeLanguage)
+    if (!url) return
+    compactGeocodeProc.command = Model.cappedCurl(url, 5, 16384)
+    compactGeocodeProc.running = true
+  }
+
+  function loadDefaultLocation() {
+    if (defaultLocationProc.running) return
+    defaultLocationProc.running = true
   }
 
   function startChart() {
@@ -174,6 +211,7 @@ Panel {
   Component.onCompleted: {
     persistedName = locationName
     locationReady = true
+    loadDefaultLocation()
   }
 
   function startEditingLocation() {
@@ -251,7 +289,6 @@ Panel {
 
   Process {
     id: compactProc
-    command: Model.cappedCurl(root.compactFetchUrl, 8, Model.MAX_COMPACT_BYTES)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -259,7 +296,7 @@ Panel {
           root.scheduleCompactRetry()
           return
         }
-        var parsed = Model.parseCompact(text)
+        var parsed = Model.parseCurrent(text)
         if (!parsed) {
           root.scheduleCompactRetry()
           return
@@ -267,6 +304,35 @@ Panel {
         root.compact = parsed
         root.compactRetries = 0
         root.finishSavingLocation()
+      }
+    }
+  }
+
+  Process {
+    id: compactGeocodeProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var results = Model.parseGeocodingResults(text)
+        if (!results.length) return
+        root.resolvedLatitude = results[0].latitude
+        root.resolvedLongitude = results[0].longitude
+        root.fetchCurrent(results[0].latitude, results[0].longitude)
+      }
+    }
+  }
+
+  Process {
+    id: defaultLocationProc
+    command: ["cat", root.weatherJsonPath]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var def = Model.parseWeatherJson(text)
+        if (!def) return
+        root.resolvedLatitude = def.latitude
+        root.resolvedLongitude = def.longitude
+        Qt.callLater(root.startCompact)
       }
     }
   }
