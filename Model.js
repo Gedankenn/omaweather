@@ -1,4 +1,5 @@
 var MAX_COMPACT_BYTES = 2048
+var MAX_FORECAST_BYTES = 65536
 var MAX_CHART_BYTES = 65536
 var MAX_LABEL_CHARS = 32
 var MAX_TOOLTIP_CHARS = 240
@@ -96,6 +97,36 @@ function wmoEmoji(code) {
   return "🌡️"
 }
 
+// Cold-to-hot ramp for the temperature curve, interpolated in HSL so the
+// blue -> green -> amber -> red sweep stays saturated. Blue at -5 C, red at
+// 32 C, clamped outside that range.
+var TEMP_COLOR_MIN = -5
+var TEMP_COLOR_MAX = 32
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360
+  var c = (1 - Math.abs(2 * l - 1)) * s
+  var x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  var m = l - c / 2
+  var r = 0, g = 0, b = 0
+  if (h < 60) { r = c; g = x }
+  else if (h < 120) { r = x; g = c }
+  else if (h < 180) { g = c; b = x }
+  else if (h < 240) { g = x; b = c }
+  else if (h < 300) { r = x; b = c }
+  else { r = c; b = x }
+  return rgbHex((r + m) * 255, (g + m) * 255, (b + m) * 255)
+}
+
+function tempColor(temp) {
+  var t = Number(temp)
+  if (!isFinite(t)) t = 18
+  if (t < TEMP_COLOR_MIN) t = TEMP_COLOR_MIN
+  if (t > TEMP_COLOR_MAX) t = TEMP_COLOR_MAX
+  var f = (t - TEMP_COLOR_MIN) / (TEMP_COLOR_MAX - TEMP_COLOR_MIN)
+  return hslToRgb(220 - f * 220, 0.82, 0.58)
+}
+
 function parseCurrent(raw) {
   try {
     var data = JSON.parse(String(raw || "{}"))
@@ -113,6 +144,102 @@ function parseCurrent(raw) {
       humidity: cur.relative_humidity_2m === undefined ? "" : asPlainUi(Math.round(Number(cur.relative_humidity_2m)) + "%", MAX_FIELD_HUMIDITY),
       wind: cur.wind_speed_10m === undefined ? "" : asPlainUi(Math.round(Number(cur.wind_speed_10m)) + " km/h", MAX_FIELD_WIND),
       location: ""
+    }
+  } catch (e) {
+    return null
+  }
+}
+
+// One Open-Meteo request drives both the bar chip (current) and the popup
+// (hourly curve + daily summary). Replaces the old wttr.in fetches.
+function forecastUrl(latitude, longitude) {
+  var lat = parseCoordinate(latitude)
+  var lon = parseCoordinate(longitude)
+  if (lat === null || lon === null) return ""
+  return "https://api.open-meteo.com/v1/forecast?latitude=" + lat
+    + "&longitude=" + lon
+    + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
+    + "&hourly=temperature_2m,precipitation_probability,weather_code"
+    + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset"
+    + "&timezone=auto&forecast_days=3"
+}
+
+function roundOrNull(value) {
+  var n = Number(value)
+  return isFinite(n) ? Math.round(n) : null
+}
+
+function hourLabel(iso) {
+  var match = String(iso || "").match(/T(\d{2}):/)
+  return match ? match[1] + ":00" : ""
+}
+
+function dayLabel(iso) {
+  var match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return ""
+  var names = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+  var date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0)
+  return names[date.getDay()] || ""
+}
+
+function clockLabel(iso) {
+  var match = String(iso || "").match(/T(\d{2}:\d{2})/)
+  return match ? match[1] : ""
+}
+
+function parseForecast(raw) {
+  try {
+    var data = JSON.parse(String(raw || "{}"))
+    var hourly = data.hourly || {}
+    var daily = data.daily || {}
+    var current = data.current || {}
+    var times = hourly.time
+    if (!times || !times.length || !daily.time || !daily.time.length) return null
+
+    var hours = []
+    for (var i = 0; i < times.length && hours.length < 72; i++) {
+      var temp = roundOrNull(hourly.temperature_2m ? hourly.temperature_2m[i] : null)
+      if (temp === null) continue
+      hours.push({
+        time: String(times[i]),
+        label: hourLabel(times[i]),
+        temp: temp,
+        precip: Math.max(0, Math.min(100, roundOrNull(hourly.precipitation_probability ? hourly.precipitation_probability[i] : 0) || 0)),
+        code: hourly.weather_code ? hourly.weather_code[i] : null
+      })
+    }
+    if (!hours.length) return null
+
+    var days = []
+    for (var d = 0; d < daily.time.length && days.length < 3; d++) {
+      days.push({
+        date: String(daily.time[d]),
+        label: dayLabel(daily.time[d]),
+        code: daily.weather_code ? daily.weather_code[d] : null,
+        emoji: asPlainUi(wmoEmoji(daily.weather_code ? daily.weather_code[d] : null), MAX_FIELD_EMOJI),
+        max: roundOrNull(daily.temperature_2m_max ? daily.temperature_2m_max[d] : null),
+        min: roundOrNull(daily.temperature_2m_min ? daily.temperature_2m_min[d] : null),
+        precip: Math.max(0, Math.min(100, roundOrNull(daily.precipitation_probability_max ? daily.precipitation_probability_max[d] : 0) || 0)),
+        sunrise: clockLabel(daily.sunrise ? daily.sunrise[d] : ""),
+        sunset: clockLabel(daily.sunset ? daily.sunset[d] : "")
+      })
+    }
+
+    var code = current.weather_code
+    return {
+      current: {
+        temperature: roundOrNull(current.temperature_2m),
+        apparent: roundOrNull(current.apparent_temperature),
+        humidity: roundOrNull(current.relative_humidity_2m),
+        wind: roundOrNull(current.wind_speed_10m),
+        code: code === undefined ? null : code,
+        condition: asPlainUi(wmoText(code), MAX_FIELD_CONDITION),
+        emoji: asPlainUi(wmoEmoji(code), MAX_FIELD_EMOJI)
+      },
+      days: days,
+      hours: hours,
+      sunrise: days.length ? days[0].sunrise : "",
+      sunset: days.length ? days[0].sunset : ""
     }
   } catch (e) {
     return null
@@ -578,6 +705,7 @@ function tooltip(compact, locationName) {
 if (typeof module !== "undefined") {
   module.exports = {
     MAX_COMPACT_BYTES: MAX_COMPACT_BYTES,
+    MAX_FORECAST_BYTES: MAX_FORECAST_BYTES,
     MAX_CHART_BYTES: MAX_CHART_BYTES,
     defaultLocation: defaultLocation,
     clampLocation: clampLocation,
@@ -587,9 +715,12 @@ if (typeof module !== "undefined") {
     compactUrl: compactUrl,
     chartUrl: chartUrl,
     currentUrl: currentUrl,
+    forecastUrl: forecastUrl,
     wmoText: wmoText,
     wmoEmoji: wmoEmoji,
+    tempColor: tempColor,
     parseCurrent: parseCurrent,
+    parseForecast: parseForecast,
     parseWeatherJson: parseWeatherJson,
     geocodeUrl: geocodeUrl,
     parseGeocodingResults: parseGeocodingResults,

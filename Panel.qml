@@ -21,21 +21,20 @@ Panel {
   readonly property var locationLongitude: setting("longitude", null)
   readonly property string locationQuery: Model.locationQuery(locationName, locationLatitude, locationLongitude)
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
-  readonly property string chartFetchUrl: Model.chartUrl(locationQuery)
   readonly property string weatherJsonPath: Quickshell.env("HOME") + "/.local/state/omarchy/settings/weather.json"
+  readonly property real panelWidth: Style.space(380)
 
   // Open-Meteo needs numeric coordinates. Prefer the widget's own location,
   // then the Omarchy weather.json default, then a hardcoded Pato Branco.
   property real resolvedLatitude: NaN
   property real resolvedLongitude: NaN
+
   readonly property color contentForeground: bar ? bar.foreground : Color.foreground
   readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property string geocodeLanguage: String(Qt.locale().name || "en")
 
-  property var compact: null
-  property string chart: ""
-  property int compactRetries: 0
-  property int chartRetries: 0
+  property var forecast: null
+  property int forecastRetries: 0
 
   property bool editingLocation: false
   property bool savingLocation: false
@@ -46,26 +45,30 @@ Panel {
   property string geocodePendingQuery: ""
   property string geocodeActiveQuery: ""
 
-  readonly property string displayLocation: locationName || (compact && compact.location ? compact.location : "")
+  // The bar chip and tooltip keep the shape the old wttr.in parser produced.
+  readonly property var compact: {
+    if (!forecast || !forecast.current) return null
+    var c = forecast.current
+    return {
+      emoji: c.emoji || "",
+      temp: c.temperature === null ? "" : c.temperature + "°",
+      tempShort: c.temperature === null ? "" : String(c.temperature),
+      condition: c.condition || "",
+      humidity: c.humidity === null ? "" : c.humidity + "%",
+      wind: c.wind === null ? "" : c.wind + " km/h",
+      location: ""
+    }
+  }
+  readonly property string displayLocation: locationName || (forecast && forecast.days && forecast.days.length ? forecast.days[0].label : "")
   readonly property string label: Model.barLabel(compact, !!(bar && bar.vertical))
   readonly property string tooltipText: Model.tooltip(compact, locationName)
-  readonly property var chartParts: Model.splitChart(chart)
-  readonly property string chartBox: chartParts && chartParts.box ? chartParts.box : ""
-  readonly property string chartFooter: chartParts && chartParts.footer ? Model.stripAnsi(chartParts.footer) : ""
-  readonly property string chartHtml: chartBox ? Model.ansiToHtml(chartBox, contentForeground) : ""
-  readonly property bool fetching: compactProc.running || chartProc.running || compactRetryTimer.running || chartRetryTimer.running
-  readonly property string statusMessage: chart ? "" : (fetching ? "Fetching v2.wttr.in…" : "Couldn't reach wttr.in")
-  // Qt reports StyledText width as pixelSize*cols (em square). JetBrains Mono
-  // and other bar fonts paint at ~0.6em, which is the cell we actually see.
-  readonly property real chartInnerWidth: Math.ceil(Model.chartColumns(chartBox) * Style.font.bodySmall * 0.6)
+  readonly property bool fetching: forecastProc.running || compactGeocodeProc.running || forecastRetryTimer.running
+  readonly property string statusMessage: forecast ? "" : (fetching ? "Fetching Open-Meteo…" : "Couldn't reach Open-Meteo")
 
   onLocationQueryChanged: {
-    compactRetries = 0
-    chartRetries = 0
-    compactProc.running = false
-    chartProc.running = false
-    compact = null
-    chart = ""
+    forecastRetries = 0
+    forecastProc.running = false
+    forecast = null
     Qt.callLater(refresh)
   }
 
@@ -73,13 +76,13 @@ Panel {
     openedFromHotkey = false
     setCenterHoverRevealSuppressed(false)
     root.controller.show()
-    if (!chart) root.refresh()
+    if (!forecast) root.refresh()
   }
 
   function openFromHotkey() {
     openedFromHotkey = true
     root.controller.show()
-    if (!chart) root.refresh()
+    if (!forecast) root.refresh()
     Qt.callLater(function() {
       if (root.opened) setCenterHoverRevealSuppressed(true)
     })
@@ -102,43 +105,48 @@ Panel {
     return false
   }
 
+  // Third-party plugins get the read-only PluginBarApi facade, so the state
+  // flip goes through its method. Fall back to the property for first-party
+  // hosts that expose a writable Bar.
   function setCenterHoverRevealSuppressed(value) {
-    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
-      root.bar.centerHoverRevealSuppressed = value
+    if (!root.bar) return
+    if (typeof root.bar.setCenterHoverRevealSuppressed === "function") {
+      root.bar.setCenterHoverRevealSuppressed(value)
+      return
+    }
+    if ("centerHoverRevealSuppressed" in root.bar) root.bar.centerHoverRevealSuppressed = value
   }
 
   function refresh() {
-    compactRetries = 0
-    chartRetries = 0
-    startCompact()
-    startChart()
+    forecastRetries = 0
+    startForecast()
   }
 
-  function startCompact() {
+  function startForecast() {
     var lat = Model.parseCoordinate(root.locationLatitude)
     var lon = Model.parseCoordinate(root.locationLongitude)
     if (lat !== null && lon !== null) {
-      fetchCurrent(lat, lon)
+      fetchForecast(lat, lon)
       return
     }
     if (isFinite(root.resolvedLatitude) && isFinite(root.resolvedLongitude)) {
-      fetchCurrent(root.resolvedLatitude, root.resolvedLongitude)
+      fetchForecast(root.resolvedLatitude, root.resolvedLongitude)
       return
     }
     if (root.locationName) {
-      startCompactGeocode(root.locationName)
+      startForecastGeocode(root.locationName)
       return
     }
-    fetchCurrent(-26.22861, -52.67056)
+    fetchForecast(-26.22861, -52.67056)
   }
 
-  function fetchCurrent(latitude, longitude) {
-    var url = Model.currentUrl(latitude, longitude)
+  function fetchForecast(latitude, longitude) {
+    var url = Model.forecastUrl(latitude, longitude)
     if (!url) return
-    restartProc(compactProc, Model.cappedCurl(url, 8, Model.MAX_COMPACT_BYTES))
+    restartProc(forecastProc, Model.cappedCurl(url, 10, Model.MAX_FORECAST_BYTES))
   }
 
-  function startCompactGeocode(name) {
+  function startForecastGeocode(name) {
     var url = Model.geocodeUrl(name, root.geocodeLanguage)
     if (!url) return
     compactGeocodeProc.command = Model.cappedCurl(url, 5, 16384)
@@ -148,10 +156,6 @@ Panel {
   function loadDefaultLocation() {
     if (defaultLocationProc.running) return
     defaultLocationProc.running = true
-  }
-
-  function startChart() {
-    restartProc(chartProc, Model.cappedCurl(root.chartFetchUrl, 20, Model.MAX_CHART_BYTES))
   }
 
   function restartProc(proc, command) {
@@ -164,16 +168,10 @@ Panel {
     proc.running = true
   }
 
-  function scheduleCompactRetry() {
-    if (compactRetries >= 3) return
-    compactRetries++
-    compactRetryTimer.restart()
-  }
-
-  function scheduleChartRetry() {
-    if (chartRetries >= 3) return
-    chartRetries++
-    chartRetryTimer.restart()
+  function scheduleForecastRetry() {
+    if (forecastRetries >= 3) return
+    forecastRetries++
+    forecastRetryTimer.restart()
   }
 
   function persistSettings(values) {
@@ -260,7 +258,7 @@ Panel {
     savingLocation = true
     persistLocation(name, latitude, longitude)
     if (nextQuery === root.locationQuery) {
-      chart = ""
+      forecast = null
       refresh()
     }
   }
@@ -288,21 +286,21 @@ Panel {
   }
 
   Process {
-    id: compactProc
+    id: forecastProc
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        if (!Model.withinByteCap(text, Model.MAX_COMPACT_BYTES)) {
-          root.scheduleCompactRetry()
+        if (!Model.withinByteCap(text, Model.MAX_FORECAST_BYTES)) {
+          root.scheduleForecastRetry()
           return
         }
-        var parsed = Model.parseCurrent(text)
+        var parsed = Model.parseForecast(text)
         if (!parsed) {
-          root.scheduleCompactRetry()
+          root.scheduleForecastRetry()
           return
         }
-        root.compact = parsed
-        root.compactRetries = 0
+        root.forecast = parsed
+        root.forecastRetries = 0
         root.finishSavingLocation()
       }
     }
@@ -317,7 +315,7 @@ Panel {
         if (!results.length) return
         root.resolvedLatitude = results[0].latitude
         root.resolvedLongitude = results[0].longitude
-        root.fetchCurrent(results[0].latitude, results[0].longitude)
+        root.fetchForecast(results[0].latitude, results[0].longitude)
       }
     }
   }
@@ -332,35 +330,7 @@ Panel {
         if (!def) return
         root.resolvedLatitude = def.latitude
         root.resolvedLongitude = def.longitude
-        Qt.callLater(root.startCompact)
-      }
-    }
-  }
-
-  Process {
-    id: chartProc
-    command: Model.cappedCurl(root.chartFetchUrl, 20, Model.MAX_CHART_BYTES)
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (!Model.withinByteCap(text, Model.MAX_CHART_BYTES)) {
-          root.scheduleChartRetry()
-          return
-        }
-        var cleaned = Model.cleanChart(text)
-        if (!Model.stripAnsi(cleaned)) {
-          root.scheduleChartRetry()
-          return
-        }
-        root.chart = cleaned
-        root.chartRetries = 0
-        if (!root.compact) {
-          var fromChart = Model.parseWeatherLine(Model.stripAnsi(cleaned))
-          if (fromChart) {
-            root.compact = fromChart
-            root.finishSavingLocation()
-          }
-        }
+        Qt.callLater(root.startForecast)
       }
     }
   }
@@ -378,15 +348,9 @@ Panel {
   }
 
   Timer {
-    id: compactRetryTimer
+    id: forecastRetryTimer
     interval: 2500
-    onTriggered: root.startCompact()
-  }
-
-  Timer {
-    id: chartRetryTimer
-    interval: 2500
-    onTriggered: root.startChart()
+    onTriggered: root.startForecast()
   }
 
   Timer {
@@ -425,8 +389,8 @@ Panel {
     centerOnBar: true
     focusTarget: keyCatcher
     padding: Style.spacing.md
-    contentWidth: panel.fittedContentWidth(Math.max(root.chartInnerWidth, Style.space(280)) + panel.padding * 2 + Style.space(4))
-    contentHeight: panel.fittedContentHeight(Math.max(Style.space(80), chartColumn.implicitHeight))
+    contentWidth: panel.fittedContentWidth(root.panelWidth + panel.padding * 2)
+    contentHeight: panel.fittedContentHeight(Math.max(Style.space(120), contentColumn.implicitHeight))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -438,19 +402,19 @@ Panel {
       onTextKey: function(t) { if (t === "r" || t === "R") root.refresh() }
 
       Flickable {
-        id: chartScroll
+        id: popupScroll
         anchors.fill: parent
         contentWidth: width
-        contentHeight: chartColumn.implicitHeight
+        contentHeight: contentColumn.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         interactive: contentHeight > height
         flickableDirection: Flickable.VerticalFlick
 
         Column {
-          id: chartColumn
-          width: Math.max(root.chartInnerWidth, parent.width)
-          spacing: Style.space(6)
+          id: contentColumn
+          width: parent.width
+          spacing: Style.space(8)
 
           Item {
             visible: !root.editingLocation
@@ -607,33 +571,85 @@ Panel {
             }
           }
 
-          Text {
-            id: chartText
+          // Current conditions summary.
+          Item {
+            visible: !root.editingLocation && root.forecast !== null
             width: parent.width
-            text: root.chartHtml || root.statusMessage
-            textFormat: root.chartHtml ? Text.StyledText : Text.PlainText
-            color: root.chartHtml ? root.contentForeground : Qt.darker(root.contentForeground, 1.5)
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.bodySmall
-            font.kerning: false
-            wrapMode: Text.NoWrap
-            clip: true
-            renderType: Text.QtRendering
-            lineHeight: 1.02
-            lineHeightMode: Text.ProportionalHeight
-            font.italic: !root.chart
+            height: summaryColumn.implicitHeight
+
+            Column {
+              id: summaryColumn
+              width: parent.width
+              spacing: Style.space(2)
+
+              Row {
+                spacing: Style.space(10)
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: root.forecast && root.forecast.current ? root.forecast.current.emoji : ""
+                  font.pixelSize: Style.font.display
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+                Column {
+                  spacing: 0
+                  anchors.verticalCenter: parent.verticalCenter
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: root.forecast && root.forecast.current && root.forecast.current.temperature !== null
+                      ? root.forecast.current.temperature + "°C" : "—"
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.title
+                  }
+                  Text {
+                    textFormat: Text.PlainText
+                    text: root.forecast && root.forecast.current ? root.forecast.current.condition : ""
+                    color: Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.7)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                  }
+                }
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                text: {
+                  if (!root.forecast || !root.forecast.current) return ""
+                  var c = root.forecast.current
+                  var bits = []
+                  if (c.apparent !== null) bits.push("Feels " + c.apparent + "°")
+                  if (c.humidity !== null) bits.push(c.humidity + "%")
+                  if (c.wind !== null) bits.push(c.wind + " km/h")
+                  return bits.join("   ·   ")
+                }
+                color: Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.7)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+            }
+          }
+
+          ForecastChart {
+            visible: !root.editingLocation && root.forecast !== null
+            width: parent.width
+            height: visible ? Style.space(164) : 0
+            hours: root.forecast ? root.forecast.hours : []
+            days: root.forecast ? root.forecast.days : []
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
           }
 
           Text {
-            visible: root.chartFooter !== ""
+            visible: root.forecast === null && !root.editingLocation
             width: parent.width
-            text: root.chartFooter
+            text: root.statusMessage
             textFormat: Text.PlainText
-            color: Qt.darker(root.contentForeground, 1.15)
+            color: Qt.darker(root.contentForeground, 1.5)
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.bodySmall
-            wrapMode: Text.Wrap
-            renderType: Text.NativeRendering
+            font.italic: true
           }
         }
       }

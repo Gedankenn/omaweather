@@ -1,21 +1,21 @@
 # Omaweather
 
 <p align="center">
-  <strong>The <a href="https://v2.wttr.in">v2.wttr.in</a> chart, living in your Omarchy bar.</strong><br>
-  Emoji and temperature up top. The full colored forecast on click.
+  <strong><a href="https://open-meteo.com">Open-Meteo</a> weather, living in your Omarchy bar.</strong><br>
+  Emoji and temperature up top. A native three-day graph on click.
 </p>
 
 <p align="center">
-  <img src="preview.png" width="480" alt="Omaweather in the Omarchy bar: emoji and temperature on the chip, colored three-day temperature graph, rain, wind, and moon phase in the popup">
+  <img src="preview.png" width="480" alt="Omaweather in the Omarchy bar: emoji and temperature on the chip, and a colored three-day temperature graph with rain bars and condition icons in the popup">
 </p>
 
 <p align="center">
   <a href="https://omarchy.org"><img src="https://img.shields.io/badge/Omarchy-Quattro-111111?style=flat-square" alt="Omarchy Quattro"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-e6c35c?style=flat-square" alt="MIT license"></a>
-  <a href="https://github.com/chubin/wttr.in"><img src="https://img.shields.io/badge/data-wttr.in-87ff00?style=flat-square" alt="wttr.in"></a>
+  <a href="https://open-meteo.com"><img src="https://img.shields.io/badge/data-open--meteo-87ff00?style=flat-square" alt="Open-Meteo"></a>
 </p>
 
-Same picture you get from `curl v2.wttr.in` — temperature curve, rain bars, wind, moon — drawn with your bar font and theme colors.
+A real vector graph drawn inside the shell — a temperature curve colored from cold blue to hot red, rain bars, condition icons, and the day's sunrise and sunset — in your bar font and theme colors.
 
 No sudo or pkexec is required.
 
@@ -35,9 +35,9 @@ omarchy bar move io.github.gedankenn.omaweather --section right
 
 | In the bar | In the popup |
 | --- | --- |
-| Weather emoji + temperature | Three-day temperature graph |
-| Tooltip with wind and humidity | Precipitation, wind, moon phase |
-| Refreshes every 15 minutes | Sunrise, sunset, and location |
+| Weather emoji + temperature | Current conditions, feels-like, wind, humidity |
+| Tooltip with wind and humidity | Three-day temperature curve with a cold-to-hot gradient |
+| Refreshes every 15 minutes | Rain bars, condition icons, sunrise and sunset |
 
 ## Usage
 
@@ -72,9 +72,9 @@ The plugin does not overwrite user configuration. Removing it only drops its bar
 
 ## Data
 
-The current conditions on the bar (emoji, temperature, wind, humidity) come from [Open-Meteo](https://open-meteo.com) over HTTPS, the same keyless source the Second Coming theme uses. The popup forecast chart still comes from [wttr.in](https://github.com/chubin/wttr.in). Both are fetched with `curl`, and the download size is capped before it reaches the shell (`head -c`, plus `--max-filesize`). Remote fields are clipped and treated as plain text in the bar and footer. Metric units.
+Everything — the bar chip, the current-conditions summary, and the three-day graph — comes from [Open-Meteo](https://open-meteo.com) over HTTPS, the same keyless source the Second Coming theme uses. One request returns the current readings, 72 hours of hourly data, and three days of daily highs, lows, rain chance, sunrise, and sunset. It is fetched with `curl`, and the download size is capped before it reaches the shell (`head -c`, plus `--max-filesize`). Remote fields are clipped and treated as plain text. Metric units.
 
-Needs a network connection. If a source is slow or down, the last good reading stays on the bar and the plugin retries.
+Needs a network connection. If Open-Meteo is slow or down, the last good reading stays on the bar and the plugin retries.
 
 ## Remove
 

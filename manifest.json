@@ -2,17 +2,19 @@
   "schemaVersion": 1,
   "id": "io.github.gedankenn.omaweather",
   "name": "Omaweather",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Gedankenn",
   "license": "MIT",
-  "description": "Current weather in the Omarchy bar, with a city search and the colored v2.wttr.in forecast chart on click.",
-  "kinds": ["bar-widget"],
+  "description": "Current weather in the Omarchy bar, with a city search and a native temperature graph on click.",
+  "kinds": [
+    "bar-widget"
+  ],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Omaweather",
-    "description": "Emoji + temperature in the bar; click to search a city and see the colored v2.wttr.in chart",
+    "description": "Emoji + temperature in the bar; click to search a city and see the native three-day forecast graph",
     "category": "Info",
     "allowMultiple": false,
     "defaultSection": "center",
@@ -26,7 +28,7 @@
         "type": "string",
         "label": "Location",
         "defaultValue": "",
-        "description": "City name or lat,lon. Leave empty to use IP geolocation. Click the city in the popup to search."
+        "description": "City name or lat,lon. Leave empty to use the Omarchy weather.json location, then Pato Branco. Click the city in the popup to search."
       },
       {
         "key": "refreshMinutes",
