@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong><a href="https://open-meteo.com">Open-Meteo</a> weather, living in your Omarchy bar.</strong><br>
-  Emoji and temperature up top. A native three-day graph on click.
+  Emoji and temperature up top. A native three-day graph on click, with a dashed amber line and a dot that mark the current hour right on the curve.
 </p>
 
 <p align="center">
